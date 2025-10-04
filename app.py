@@ -1,69 +1,51 @@
-import os
-import time
-import requests
 import streamlit as st
-import numpy as np
 import cv2
+import numpy as np
 from PIL import Image
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.image import img_to_array
+import time
 
-# ========= Config =========
-LOCAL_MODEL_PATH = "models/pre_trained_model.keras"
-REMOTE_MODEL_URL = ""  # optional direct download link for large model file
-IMG_SIZE = 128
+# === Load model ===
+model = load_model(r"D:\materials\AI track\materials\DEEP LEARNING\CV\face_mask_detection\pre_trained_model.keras")  
+img_size = 128  
 
+# === Page settings ===
 st.set_page_config(page_title="Face Mask Detector", page_icon="😷", layout="centered")
 
-# ========= Helpers =========
-@st.cache_resource(show_spinner=False)
-def download_model_if_needed() -> str:
-    if os.path.exists(LOCAL_MODEL_PATH):
-        return LOCAL_MODEL_PATH
-    if not REMOTE_MODEL_URL:
-        raise FileNotFoundError(
-            "Model file not found locally and REMOTE_MODEL_URL is empty. "
-            "Add models/pre_trained_model.keras to the repo (<100MB) or provide a direct download link."
-        )
-    os.makedirs(os.path.dirname(LOCAL_MODEL_PATH), exist_ok=True)
-    tmp_path = LOCAL_MODEL_PATH + ".part"
-    with requests.get(REMOTE_MODEL_URL, stream=True, timeout=120) as r:
-        r.raise_for_status()
-        with open(tmp_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-    os.replace(tmp_path, LOCAL_MODEL_PATH)
-    return LOCAL_MODEL_PATH
-
-@st.cache_resource(show_spinner=True)
-def load_mask_model():
-    model_path = download_model_if_needed()
-    model = load_model(model_path)
-    return model
-
-def predict(model, img_pil):
-    img = img_pil.convert("RGB")
-    img = img.resize((IMG_SIZE, IMG_SIZE))
-    img_array = img_to_array(img) / 255.0
-    img_array = np.expand_dims(img_array, axis=0)
-    pred = model.predict(img_array, verbose=0)[0][0]
-    return pred
-
-# ========= Styles =========
+# === Custom Style ===
 st.markdown("""
     <style>
-    .main { background-color: #f7f9fc; }
-    .title { font-size: 42px; color: #0d47a1; text-align: center; font-weight: 800; margin: 8px 0; }
-    .sub { font-size: 18px; text-align: center; color: #555; margin-bottom: 24px; }
-    .footer { text-align: center; margin-top: 36px; font-size: 16px; color: #888; }
+    .main {
+        background-color: #f0f2f6;
+    }
+    .title {
+        font-size: 42px;
+        color: #0d47a1;
+        text-align: center;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+    .sub {
+        font-size: 18px;
+        text-align: center;
+        color: #555;
+        margin-bottom: 30px;
+    }
+    .footer {
+        text-align: center;
+        margin-top: 50px;
+        font-size: 20px;
+        color: #888;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-# ========= UI =========
+# === Title ===
 st.markdown('<div class="title">😷 Face Mask Detection App</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub">Upload or capture a photo to check if you are wearing a mask.</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub">Upload or capture your photo to check if you are wearing a mask.</div>', unsafe_allow_html=True)
 
+# === Upload or Camera ===
 option = st.radio("Choose input method:", ["📁 Upload Image", "📷 Use Camera"])
 uploaded_image = None
 
@@ -71,28 +53,38 @@ if option == "📁 Upload Image":
     uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png"])
     if uploaded_file is not None:
         uploaded_image = Image.open(uploaded_file)
-else:
-    shot = st.camera_input("Take a photo")
-    if shot is not None:
-        uploaded_image = Image.open(shot)
+elif option == "📷 Use Camera":
+    uploaded_image = st.camera_input("Take a photo")
+    if uploaded_image is not None:
+        uploaded_image = Image.open(uploaded_image)
 
-# ========= Run =========
-if uploaded_image is not None:
-    st.image(uploaded_image, caption="Input Image", width=280)
-    with st.spinner("Loading model & analyzing..."):
+# === Prediction Logic ===
+def predict(img_pil):
+    img = img_pil.convert('RGB') 
+    img = img.resize((img_size, img_size))
+    img_array = img_to_array(img)
+    img_array = img_array / 255.0
+    img_array = np.expand_dims(img_array, axis=0) 
+    prediction = model.predict(img_array)[0][0]
+    return prediction
+
+# === Display result ===
+if uploaded_image:
+    st.image(uploaded_image, caption="Input Image", width=250)
+    with st.spinner("Analyzing..."):
+        time.sleep(2)
         try:
-            model = load_mask_model()
-            score = predict(model, uploaded_image)
-            time.sleep(0.8)
-
-            if score >= 0.5:
+            result = predict(uploaded_image)
+            if result >= 0.5:
                 st.error("❌ **No Mask Detected!** 😷")
             else:
                 st.success("✅ **Mask Detected!** 👏")
-
         except Exception as e:
             st.warning(f"⚠️ Error during prediction: {e}")
 
+# === Footer ===
 st.markdown("""
-    <div class="footer">🚀 Deployed by <strong style="color:#0d47a1;">AI Engineer Youssef Eladl</strong></div>
+    <div class="footer">
+    🚀 Deployed by <strong style="color:#0d47a1;">AI Engineer Youssef Eladl</strong>
+    </div>
 """, unsafe_allow_html=True)
